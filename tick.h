@@ -3,7 +3,11 @@
 
 #include <stdint.h>
 
-uint32_t cmcm_tick_get(void);
-uint32_t cmcm_tick_since(uint32_t since);
+namespace cmcm {
+
+uint32_t tick_get(void);
+uint32_t tick_since(uint32_t since);
+
+}
 
 #endif

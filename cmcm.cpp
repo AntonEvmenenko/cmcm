@@ -45,13 +45,15 @@ typedef struct {
   } hw_frame;
 } cmcm_stack_frame_t;
 
-static void cmcm_destroy_task(void) {
+namespace cmcm {
+
+static void destroy_task(void) {
   tasks[current_task].flags = 0;
-  cmcm_yield();
+  yield();
   while (1);
 }
 
-void cmcm_create_task(void (*handler)(void)) {
+void create_task(void (*handler)(void)) {
   // find first available slot
   int index;
   for (index = 0; tasks[index].flags & CMCM_TASK_INUSE && index < CMCM_MAX_NUM_TASKS; index++);
@@ -73,31 +75,31 @@ void cmcm_create_task(void (*handler)(void)) {
 
   cmcm_stack_frame_t *frame = (cmcm_stack_frame_t *)tasks[index].sp;
 
-  frame->hw_frame.lr = (void*)cmcm_destroy_task;
+  frame->hw_frame.lr = (void*)destroy_task;
   frame->hw_frame.pc = (void*)handler;
   frame->hw_frame.psr = 0x21000000; // default PSR value
 
   tasks[index].flags |= CMCM_TASK_INUSE;
 }
 
-int cmcm_current_task(void) {
+int get_current_task(void) {
   return current_task;
 }
 
-void cmcm_delay(uint32_t ticks) {
-  uint32_t start = cmcm_tick_get();
+void sleep(uint32_t ticks) {
+  uint32_t start = tick_get();
 
   while (1) {
-    if (cmcm_tick_since(start) >= ticks) {
+    if (tick_since(start) >= ticks) {
       // enough time has passed
       break;
     }
 
-    cmcm_yield();
+    yield();
   }
 }
 
-static void *cmcm_push_context(void) {
+static void *push_context(void) {
   void *psp;
 
   // copies registers to the PSP stack
@@ -110,7 +112,7 @@ static void *cmcm_push_context(void) {
   return psp;
 }
 
-static void cmcm_pop_context(void *psp) {
+static void pop_context(void *psp) {
   // loads registers with contents of the PSP stack
   // additional registers are popped in hardware
   __asm__("LDMFD %0!, {r4-r11}\n"
@@ -118,12 +120,12 @@ static void cmcm_pop_context(void *psp) {
           : : "r" (psp));
 }
 
-void cmcm_context_switch() {
+void context_switch() {
   // the first context switch will be called from the MSP
   // in that case we do not need to save the context
   // since we never return to MSP
   if (current_task != -1) {
-    tasks[current_task].sp = cmcm_push_context();
+    tasks[current_task].sp = push_context();
   }
 
   // find next running task
@@ -138,12 +140,12 @@ void cmcm_context_switch() {
     running = (flags & CMCM_TASK_INUSE) & !(flags & CMCM_TASK_SLEEPING);
   } while (!running);
 
-  cmcm_pop_context(tasks[current_task].sp);
+  pop_context(tasks[current_task].sp);
 
   __asm__("bx %0" : : "r" (0xFFFFFFFD));
 }
 
-void cmcm_yield(void) {
+void yield(void) {
   // manually trigger pend_sv
   ICSR |= (1 << 28);
 
@@ -153,22 +155,24 @@ void cmcm_yield(void) {
   __asm__("nop");
 }
 
-void cmcm_sleep() {
+void pause() {
   tasks[current_task].flags |= CMCM_TASK_SLEEPING;
-  cmcm_yield();
+  yield();
 }
 
-void cmcm_wake(int task_id) {
+void resume(int task_id) {
   // critial section, could be called from any task
-  cmcm_disable_interrupts();
+  disable_interrupts();
   tasks[task_id].flags &= ~CMCM_TASK_SLEEPING;
-  cmcm_enable_interrupts();
+  enable_interrupts();
 }
 
-void cmcm_disable_interrupts(void) {
+void disable_interrupts(void) {
   __asm__("CPSID i");
 }
 
-void cmcm_enable_interrupts(void) {
+void enable_interrupts(void) {
   __asm__("CPSIE i");
+}
+
 }

@@ -13,16 +13,20 @@
 #define CMCM_STACK_SIZE 2048
 #endif
 
-void cmcm_create_task(void (*handler)(void));
-int cmcm_current_task(void);
-void cmcm_context_switch(void);
-void cmcm_yield(void);
-void cmcm_delay(uint32_t ticks);
-void cmcm_sleep(void);
-void cmcm_wake(int task_id);
+namespace cmcm {
 
-void cmcm_disable_interrupts(void);
-void cmcm_enable_interrupts(void);
+void create_task(void (*handler)(void));
+int get_current_task(void);
+void context_switch(void);
+void yield(void);
+void sleep(uint32_t ticks);
+void pause(void);
+void resume(int task_id);
+
+void disable_interrupts(void);
+void enable_interrupts(void);
+
+}
 
 #include "tick.h"
 
