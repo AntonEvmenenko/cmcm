@@ -67,11 +67,14 @@ void cmcm_create_task(void (*handler)(void)) {
 
   // initialize the start of the stack as if it had been
   // pushed via a context switch
-  tasks[index].sp -= sizeof(cmcm_stack_frame_t);
+
+  // tasks[index].sp -= sizeof(cmcm_stack_frame_t);
+  tasks[index].sp = (cmcm_stack_frame_t*)(tasks[index].sp) - 1;
+
   cmcm_stack_frame_t *frame = (cmcm_stack_frame_t *)tasks[index].sp;
 
-  frame->hw_frame.lr = cmcm_destroy_task;
-  frame->hw_frame.pc = handler;
+  frame->hw_frame.lr = (void*)cmcm_destroy_task;
+  frame->hw_frame.pc = (void*)handler;
   frame->hw_frame.psr = 0x21000000; // default PSR value
 
   tasks[index].flags |= CMCM_TASK_INUSE;
