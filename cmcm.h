@@ -24,8 +24,6 @@ void cmcm_wake(int task_id);
 void cmcm_disable_interrupts(void);
 void cmcm_enable_interrupts(void);
 
-#include "mutex.h"
-#include "queue.h"
 #include "tick.h"
 
 #endif
