@@ -1,16 +1,16 @@
-#ifndef CMCM_H
-#define CMCM_H
+#ifndef COOPS_H
+#define COOPS_H
 
 #include <stdint.h>
 
 // stacks for all tasks are allocated statically so tune
 // these values so as to not needlessly waste RAM
-#ifndef CMCM_MAX_NUM_TASKS
-#define CMCM_MAX_NUM_TASKS 8
+#ifndef COOPS_MAX_NUM_TASKS
+#define COOPS_MAX_NUM_TASKS 8
 #endif
 
-#ifndef CMCM_STACK_SIZE
-#define CMCM_STACK_SIZE 2048
+#ifndef COOPS_STACK_SIZE
+#define COOPS_STACK_SIZE 2048
 #endif
 
 class CooperativeScheduler {
@@ -42,4 +42,4 @@ private:
 
 extern CooperativeScheduler& coops;
 
-#endif
+#endif // COOPS_H

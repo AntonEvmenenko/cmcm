@@ -1,4 +1,4 @@
-#include "cmcm.h"
+#include "coops.h"
 
 #include <string.h>
 #include "tick.h"
@@ -9,11 +9,11 @@ typedef struct {
     uint8_t flags;
 } task_t;
 
-#define CMCM_TASK_INUSE   (1 << 0)
-#define CMCM_TASK_PAUSED  (1 << 1)
+#define COOPS_TASK_INUSE   (1 << 0)
+#define COOPS_TASK_PAUSED  (1 << 1)
 
-static task_t tasks[CMCM_MAX_NUM_TASKS];
-static uint8_t __attribute__((aligned(8))) stackSpace[CMCM_STACK_SIZE * CMCM_MAX_NUM_TASKS];
+static task_t tasks[COOPS_MAX_NUM_TASKS];
+static uint8_t __attribute__((aligned(8))) stackSpace[COOPS_STACK_SIZE * COOPS_MAX_NUM_TASKS];
 
 // the first context switch (from MSP to PSP) will increment this
 
@@ -84,16 +84,16 @@ void CooperativeScheduler::createTask(void (*handler)(void))
 {
     // find first available slot
     int index;
-    for (index = 0; tasks[index].flags & CMCM_TASK_INUSE && index < CMCM_MAX_NUM_TASKS; index++);
-    if (index >= CMCM_MAX_NUM_TASKS) {
+    for (index = 0; tasks[index].flags & COOPS_TASK_INUSE && index < COOPS_MAX_NUM_TASKS; index++);
+    if (index >= COOPS_MAX_NUM_TASKS) {
         return;
     }
 
-    void* stack = stackSpace + (index * CMCM_STACK_SIZE);
-    memset(stack, 0, CMCM_STACK_SIZE);
+    void* stack = stackSpace + (index * COOPS_STACK_SIZE);
+    memset(stack, 0, COOPS_STACK_SIZE);
 
     // set sp to the start of the stack (highest address)
-    tasks[index].sp = ((uint8_t*)stack) + CMCM_STACK_SIZE;
+    tasks[index].sp = ((uint8_t*)stack) + COOPS_STACK_SIZE;
 
     // initialize the start of the stack as if it had been
     // pushed via a context switch
@@ -107,7 +107,7 @@ void CooperativeScheduler::createTask(void (*handler)(void))
     frame->hwFrame.pc = (void*)handler;
     frame->hwFrame.psr = 0x21000000; // default PSR value
 
-    tasks[index].flags |= CMCM_TASK_INUSE;
+    tasks[index].flags |= COOPS_TASK_INUSE;
 }
 
 int CooperativeScheduler::getCurrentTask(void)
@@ -142,12 +142,12 @@ void CooperativeScheduler::contextSwitch()
     uint8_t running;
     do {
         currentTask++;
-        if (currentTask >= CMCM_MAX_NUM_TASKS) {
+        if (currentTask >= COOPS_MAX_NUM_TASKS) {
             currentTask = 0;
         }
 
         uint8_t flags = tasks[currentTask].flags;
-        running = (flags & CMCM_TASK_INUSE) & !(flags & CMCM_TASK_PAUSED);
+        running = (flags & COOPS_TASK_INUSE) & !(flags & COOPS_TASK_PAUSED);
     } while (!running);
 
     popContext(tasks[currentTask].sp);
@@ -171,7 +171,7 @@ void CooperativeScheduler::yield(void)
 
 void CooperativeScheduler::pause()
 {
-    tasks[currentTask].flags |= CMCM_TASK_PAUSED;
+    tasks[currentTask].flags |= COOPS_TASK_PAUSED;
     yield();
 }
 
@@ -179,7 +179,7 @@ void CooperativeScheduler::resume(int task_id)
 {
     // critial section, could be called from any task
     disableInterrupts();
-    tasks[task_id].flags &= ~CMCM_TASK_PAUSED;
+    tasks[task_id].flags &= ~COOPS_TASK_PAUSED;
     enableInterrupts();
 }
 
