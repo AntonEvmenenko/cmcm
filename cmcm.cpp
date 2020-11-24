@@ -7,8 +7,8 @@ typedef struct {
     uint8_t flags;
 } cmcm_task_t;
 
-#define CMCM_TASK_INUSE (1 << 0)
-#define CMCM_TASK_SLEEPING (1 << 1)
+#define CMCM_TASK_INUSE   (1 << 0)
+#define CMCM_TASK_PAUSED  (1 << 1)
 
 // interrupt control and state register
 #define ICSR (*(volatile uint32_t*)0xE000ED04)
@@ -145,7 +145,7 @@ void context_switch()
         }
 
         uint8_t flags = tasks[current_task].flags;
-        running = (flags & CMCM_TASK_INUSE) & !(flags & CMCM_TASK_SLEEPING);
+        running = (flags & CMCM_TASK_INUSE) & !(flags & CMCM_TASK_PAUSED);
     } while (!running);
 
     pop_context(tasks[current_task].sp);
@@ -168,7 +168,7 @@ void yield(void)
 
 void pause()
 {
-    tasks[current_task].flags |= CMCM_TASK_SLEEPING;
+    tasks[current_task].flags |= CMCM_TASK_PAUSED;
     yield();
 }
 
@@ -176,7 +176,7 @@ void resume(int task_id)
 {
     // critial section, could be called from any task
     disable_interrupts();
-    tasks[task_id].flags &= ~CMCM_TASK_SLEEPING;
+    tasks[task_id].flags &= ~CMCM_TASK_PAUSED;
     enable_interrupts();
 }
 
