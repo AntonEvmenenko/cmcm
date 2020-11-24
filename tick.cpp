@@ -4,8 +4,6 @@
 
 #define CMCM_TICK_MAX 0xFFFFFFFF // 32-bit
 
-namespace cmcm {
-
 uint32_t tick_get(void)
 {
     return millis();
@@ -21,6 +19,4 @@ uint32_t tick_since(uint32_t since)
         // counter overflow
         return now + (CMCM_TICK_MAX - since);
     }
-}
-
 }

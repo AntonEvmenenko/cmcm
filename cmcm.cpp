@@ -1,23 +1,21 @@
-#include <string.h>
-
 #include "cmcm.h"
+
+#include <string.h>
+#include "tick.h"
+#include "stm32_def.h"
 
 typedef struct {
     void* sp;
     uint8_t flags;
-} cmcm_task_t;
+} task_t;
 
 #define CMCM_TASK_INUSE   (1 << 0)
 #define CMCM_TASK_PAUSED  (1 << 1)
 
-// interrupt control and state register
-#define ICSR (*(volatile uint32_t*)0xE000ED04)
-
-static cmcm_task_t tasks[CMCM_MAX_NUM_TASKS];
-static uint8_t __attribute__((aligned(8))) stack_space[CMCM_STACK_SIZE * CMCM_MAX_NUM_TASKS];
+static task_t tasks[CMCM_MAX_NUM_TASKS];
+static uint8_t __attribute__((aligned(8))) stackSpace[CMCM_STACK_SIZE * CMCM_MAX_NUM_TASKS];
 
 // the first context switch (from MSP to PSP) will increment this
-static int current_task = -1;
 
 typedef struct {
     // we explicity push these registers
@@ -30,7 +28,7 @@ typedef struct {
         uint32_t r9;
         uint32_t r10;
         uint32_t r11;
-    } sw_frame;
+    } swFrame;
 
     // these registers are pushed by the hardware
     struct {
@@ -42,68 +40,17 @@ typedef struct {
         void* lr;
         void* pc;
         uint32_t psr;
-    } hw_frame;
-} cmcm_stack_frame_t;
+    } hwFrame;
+} stack_frame_t;
 
-namespace cmcm {
-
-static void destroy_task(void)
+static void destroyTask(void)
 {
-    tasks[current_task].flags = 0;
-    yield();
+    tasks[coops.getCurrentTask()].flags = 0;
+    coops.yield();
     while (1);
 }
 
-void create_task(void (*handler)(void))
-{
-    // find first available slot
-    int index;
-    for (index = 0; tasks[index].flags & CMCM_TASK_INUSE && index < CMCM_MAX_NUM_TASKS; index++);
-    if (index >= CMCM_MAX_NUM_TASKS) {
-        return;
-    }
-
-    void* stack = stack_space + (index * CMCM_STACK_SIZE);
-    memset(stack, 0, CMCM_STACK_SIZE);
-
-    // set sp to the start of the stack (highest address)
-    tasks[index].sp = ((uint8_t*)stack) + CMCM_STACK_SIZE;
-
-    // initialize the start of the stack as if it had been
-    // pushed via a context switch
-
-    // tasks[index].sp -= sizeof(cmcm_stack_frame_t);
-    tasks[index].sp = (cmcm_stack_frame_t*)(tasks[index].sp) - 1;
-
-    cmcm_stack_frame_t* frame = (cmcm_stack_frame_t*)tasks[index].sp;
-
-    frame->hw_frame.lr = (void*)destroy_task;
-    frame->hw_frame.pc = (void*)handler;
-    frame->hw_frame.psr = 0x21000000; // default PSR value
-
-    tasks[index].flags |= CMCM_TASK_INUSE;
-}
-
-int get_current_task(void)
-{
-    return current_task;
-}
-
-void sleep(uint32_t ticks)
-{
-    uint32_t start = tick_get();
-
-    while (1) {
-        if (tick_since(start) >= ticks) {
-            // enough time has passed
-            break;
-        }
-
-        yield();
-    }
-}
-
-static void* push_context(void)
+static void* pushContext(void)
 {
     void* psp;
 
@@ -117,7 +64,7 @@ static void* push_context(void)
     return psp;
 }
 
-static void pop_context(void* psp)
+static void popContext(void* psp)
 {
     // loads registers with contents of the PSP stack
     // additional registers are popped in hardware
@@ -127,38 +74,94 @@ static void pop_context(void* psp)
             : "r"(psp));
 }
 
-void context_switch()
+CooperativeScheduler& CooperativeScheduler::instance()
+{
+    static CooperativeScheduler instance;
+    return instance;
+}
+
+void CooperativeScheduler::createTask(void (*handler)(void))
+{
+    // find first available slot
+    int index;
+    for (index = 0; tasks[index].flags & CMCM_TASK_INUSE && index < CMCM_MAX_NUM_TASKS; index++);
+    if (index >= CMCM_MAX_NUM_TASKS) {
+        return;
+    }
+
+    void* stack = stackSpace + (index * CMCM_STACK_SIZE);
+    memset(stack, 0, CMCM_STACK_SIZE);
+
+    // set sp to the start of the stack (highest address)
+    tasks[index].sp = ((uint8_t*)stack) + CMCM_STACK_SIZE;
+
+    // initialize the start of the stack as if it had been
+    // pushed via a context switch
+
+    // tasks[index].sp -= sizeof(stack_frame_t);
+    tasks[index].sp = (stack_frame_t*)(tasks[index].sp) - 1;
+
+    stack_frame_t* frame = (stack_frame_t*)tasks[index].sp;
+
+    frame->hwFrame.lr = (void*)destroyTask;
+    frame->hwFrame.pc = (void*)handler;
+    frame->hwFrame.psr = 0x21000000; // default PSR value
+
+    tasks[index].flags |= CMCM_TASK_INUSE;
+}
+
+int CooperativeScheduler::getCurrentTask(void)
+{
+    return currentTask;
+}
+
+void CooperativeScheduler::sleep(uint32_t ticks)
+{
+    uint32_t start = tick_get();
+
+    while (1) {
+        if (tick_since(start) >= ticks) {
+            // enough time has passed
+            break;
+        }
+
+        yield();
+    }
+}
+
+void CooperativeScheduler::contextSwitch()
 {
     // the first context switch will be called from the MSP
     // in that case we do not need to save the context
     // since we never return to MSP
-    if (current_task != -1) {
-        tasks[current_task].sp = push_context();
+    if (currentTask != -1) {
+        tasks[currentTask].sp = pushContext();
     }
 
     // find next running task
     uint8_t running;
     do {
-        current_task++;
-        if (current_task >= CMCM_MAX_NUM_TASKS) {
-            current_task = 0;
+        currentTask++;
+        if (currentTask >= CMCM_MAX_NUM_TASKS) {
+            currentTask = 0;
         }
 
-        uint8_t flags = tasks[current_task].flags;
+        uint8_t flags = tasks[currentTask].flags;
         running = (flags & CMCM_TASK_INUSE) & !(flags & CMCM_TASK_PAUSED);
     } while (!running);
 
-    pop_context(tasks[current_task].sp);
+    popContext(tasks[currentTask].sp);
 
     __asm__("bx %0"
             :
             : "r"(0xFFFFFFFD));
 }
 
-void yield(void)
+void CooperativeScheduler::yield(void)
 {
     // manually trigger pend_sv
-    ICSR |= (1 << 28);
+    // ICSR |= (1 << 28);
+    SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
 
     __asm__("nop");
     __asm__("nop");
@@ -166,28 +169,33 @@ void yield(void)
     __asm__("nop");
 }
 
-void pause()
+void CooperativeScheduler::pause()
 {
-    tasks[current_task].flags |= CMCM_TASK_PAUSED;
+    tasks[currentTask].flags |= CMCM_TASK_PAUSED;
     yield();
 }
 
-void resume(int task_id)
+void CooperativeScheduler::resume(int task_id)
 {
     // critial section, could be called from any task
-    disable_interrupts();
+    disableInterrupts();
     tasks[task_id].flags &= ~CMCM_TASK_PAUSED;
-    enable_interrupts();
+    enableInterrupts();
 }
 
-void disable_interrupts(void)
+CooperativeScheduler::CooperativeScheduler()
+{
+
+}
+
+void CooperativeScheduler::disableInterrupts(void)
 {
     __asm__("CPSID i");
 }
 
-void enable_interrupts(void)
+void CooperativeScheduler::enableInterrupts(void)
 {
     __asm__("CPSIE i");
 }
 
-}
+CooperativeScheduler& coops = CooperativeScheduler::instance();

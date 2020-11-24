@@ -13,21 +13,33 @@
 #define CMCM_STACK_SIZE 2048
 #endif
 
-namespace cmcm {
+class CooperativeScheduler {
 
-void create_task(void (*handler)(void));
-int get_current_task(void);
-void context_switch(void);
-void yield(void);
-void sleep(uint32_t ticks);
-void pause(void);
-void resume(int task_id);
+public:
+    static CooperativeScheduler& instance();
 
-void disable_interrupts(void);
-void enable_interrupts(void);
+    CooperativeScheduler(const CooperativeScheduler&) = delete;
+    CooperativeScheduler(CooperativeScheduler&&) = delete;
+    CooperativeScheduler& operator=(const CooperativeScheduler&) = delete;
+    CooperativeScheduler& operator=(CooperativeScheduler&&) = delete;
 
-}
+    void createTask(void (*handler)(void));
+    int getCurrentTask(void);
+    void contextSwitch(void);
+    void yield(void);
+    void sleep(uint32_t ticks);
+    void pause(void);
+    void resume(int task_id);
 
-#include "tick.h"
+private:
+    CooperativeScheduler();
+
+    void disableInterrupts(void);
+    void enableInterrupts(void);
+
+    int currentTask = -1;
+};
+
+extern CooperativeScheduler& coops;
 
 #endif
